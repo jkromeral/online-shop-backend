@@ -16,31 +16,29 @@ const db = knex({
 });
 
 const app = express();
+
 app.use(cors());
+
 app.use(bodyParser.json());
 
-// display products on default page
+// display products on home page
 
 app.get("/", (req, res) => {
-  const min = Math.floor(Math.random() * 29950);
-
   db.select("*")
     .from("products")
-    .whereBetween("id", [min, min + 29])
     .then((product) => {
-      res.json(product);
-      console.log(product.length);
+      res.json(product.slice(0, 24));
     });
 });
 
 // display products based on selected category
 
-app.get("/category/:category", (req, res) => {
+app.get("/category/:category/:currentPage", (req, res) => {
   let { category } = req.params;
-  let page = req.query.page;
+  let { currentPage } = req.params;
   const pagination = {};
-  const per_page = 16;
-  const offset = (page - 1) * per_page;
+  const per_page = 30;
+  const offset = (currentPage - 1) * per_page;
 
   category = category
     .replaceAll("-", " ")
@@ -67,9 +65,9 @@ app.get("/category/:category", (req, res) => {
     pagination.offset = offset;
     pagination.to = offset + products.length;
     pagination.last_page = Math.ceil(count / per_page);
-    pagination.current_page = page;
+    pagination.current_page = currentPage;
     pagination.from = offset;
-    pagination.data = products;
+    pagination.products = products;
     res.json(pagination);
   });
 });
@@ -77,13 +75,13 @@ app.get("/category/:category", (req, res) => {
 // display products based on searched item
 
 app.get("/search", (req, res) => {
-  let search = req.query.q;
-  const page = req.query.page;
+  let q = req.query.q;
+  let page = req.query.page;
   const pagination = {};
-  const per_page = 16;
+  const per_page = 30;
   const offset = (page - 1) * per_page;
 
-  search = search
+  q = q
     .replaceAll("-", " ")
     .split(" ")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -93,12 +91,12 @@ app.get("/search", (req, res) => {
     db
       .count("* as count")
       .from("products")
-      .where("product_name", "like", `%${search}%`)
+      .where("product_name", "like", `%${q}%`)
       .first(),
     db
       .select("*")
       .from("products")
-      .where("product_name", "like", `%${search}%`)
+      .where("product_name", "like", `%${q}%`)
       .offset(offset)
       .limit(per_page),
   ]).then(([total, products]) => {
@@ -110,7 +108,7 @@ app.get("/search", (req, res) => {
     pagination.last_page = Math.ceil(count / per_page);
     pagination.current_page = page;
     pagination.from = offset;
-    pagination.data = products;
+    pagination.products = products;
     res.json(pagination);
   });
 });
@@ -156,8 +154,8 @@ app.post("/add-to-cart", (req, res) => {
 
 // enable to view user's cart
 
-app.get("/view-cart", (req, res) => {
-  const { username } = req.body;
+app.get("/cart/:username", (req, res) => {
+  const { username } = req.params;
 
   db.select("*")
     .from("cart")
@@ -238,9 +236,7 @@ app.post("/add-to-order", (req, res) => {
       product_price: item.product_price,
       quantity: item.quantity,
       total_price: item.total_price,
-      payment_method: item.payment_method,
-      address: item.address,
-      city: item.city,
+      username: item.username,
     };
   });
 
@@ -261,8 +257,8 @@ app.post("/add-to-order", (req, res) => {
 
 // enable to view ordered items
 
-app.get("/view-orders", (req, res) => {
-  const { username } = req.body;
+app.get("/orders/:username", (req, res) => {
+  const { username } = req.params;
 
   db.select("*")
     .from("orders")
@@ -283,15 +279,15 @@ app.post("/login", (req, res) => {
     .then((user) => {
       const match = bcrypt.compareSync(password, user[0].password);
       if (match) {
-        db.select("user_id", "username", "first_name")
+        db.select("username", "first_name", "last_name")
           .from("users")
           .where("username", username)
           .then((data) => res.json(data));
       } else {
-        res.json("Unable to login.");
+        res.json("Unable to login");
       }
     })
-    .catch(() => res.json("Username doesn't exist."));
+    .catch(() => res.json("Username doesn't exist"));
 });
 
 // sign up
@@ -301,7 +297,7 @@ app.post("/signup", (req, res) => {
 
   bcrypt.hash(password, 10).then((hash) => {
     db("users")
-      .returning(["user_id", "username", "first_name"])
+      .returning(["username", "first_name", "last_name"])
       .insert({
         username: username,
         password: hash,
@@ -309,11 +305,10 @@ app.post("/signup", (req, res) => {
         last_name: last_name,
         mobile_number: mobile_number,
       })
-      .then((data) => {
-        res.json(data);
-      })
-      .catch(() => res.json("Unable to sign up."));
+      .then((user) => {
+        res.json(user);
+      });
   });
 });
 
-app.listen(3000);
+app.listen(3001);
